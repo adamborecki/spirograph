@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>4D Multi-Circle Spirograph</title>
+  <style>
+    :root {
+      --bg: #f7f2ea;
+      --stroke: #bfb7a1;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #333;
+      overflow-x: hidden;
+      background: var(--bg);
+    }
+    .parallax {
+      position: relative;
+      width: 100%;
+      height: 2000vh;
+    }
+    .spiro-container {
+      position: sticky;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100%;
+      height: 100vh;
+      pointer-events: none;
+      perspective: 600px;
+    }
+    svg {
+      width: 70vmin; height: 70vmin;
+      max-width: 90%; max-height: 90%;
+      transform-style: preserve-3d;
+      transition: transform 0.1s linear;
+    }
+    .controls {
+      position: fixed; top: 10px; left: 50%;
+      transform: translateX(-50%);
+      width: 90%; pointer-events: auto;
+      display: flex; justify-content: space-around;
+      gap: 10px; z-index: 10;
+    }
+    .controls input[type=range] {
+      -webkit-appearance: none; width: 30%;
+    }
+    .controls input[type=range]:focus { outline: none; }
+  </style>
+</head>
+<body>
+
+  <div class="controls">
+    <input id="sliderR" type="range" min="20" max="200" value="80">
+    <input id="sliderr" type="range" min="10" max="100" value="30">
+    <input id="sliderd" type="range" min="10" max="200" value="60">
+  </div>
+
+  <div class="parallax">
+    <div class="spiro-container">
+      <svg id="spiro" viewBox="-200 -200 400 400">
+        <path id="spiroPath" fill="none" stroke="var(--stroke)" stroke-width="0.5"/>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const svg = document.getElementById('spiro');
+      const path = document.getElementById('spiroPath');
+      const sliderR = document.getElementById('sliderR');
+      const sliderr = document.getElementById('sliderr');
+      const sliderd = document.getElementById('sliderd');
+
+      const steps = 20000;
+      const loops = 48;
+
+      function updateSpiro() {
+        const R = +sliderR.value;
+        const r = +sliderr.value;
+        const d = +sliderd.value;
+        // two extra circles: nested radii and offsets
+        const r2 = r * 0.6, d2 = d * 0.6;
+        const r3 = r * 0.4, d3 = d * 0.4;
+        const points = [];
+        for(let i=0; i<=steps; i++){
+          const t = i/steps * Math.PI * loops;
+          // primary circles
+          let x = (R - r) * Math.cos(t) + d * Math.cos((R - r)/r * t);
+          let y = (R - r) * Math.sin(t) - d * Math.sin((R - r)/r * t);
+          // extra circles
+          x += d2 * Math.cos((R - r)/r2 * t);
+          y -= d2 * Math.sin((R - r)/r2 * t);
+          x += d3 * Math.cos((R - r)/r3 * t);
+          y -= d3 * Math.sin((R - r)/r3 * t);
+          // slight randomness
+          x += (Math.random()-0.5) * 0.5;
+          y += (Math.random()-0.5) * 0.5;
+          points.push([x, y]);
+        }
+        const dStr = points.map(p => p.join(',')).join(' ');
+        path.setAttribute('d', 'M' + dStr);
+
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = length;
+        path.style.strokeDashoffset = length;
+        return length;
+      }
+
+      let totalLength = updateSpiro();
+
+      [sliderR, sliderr, sliderd].forEach(slider => {
+        slider.addEventListener('input', () => {
+          totalLength = updateSpiro();
+        });
+      });
+
+      window.addEventListener('scroll', () => {
+        const scrollY = window.scrollY;
+        const maxScroll = document.body.scrollHeight - window.innerHeight;
+        const progress = Math.min(Math.max(scrollY / maxScroll, 0), 1);
+        path.style.strokeDashoffset = totalLength * (1 - progress);
+        svg.style.transform =
+          'rotateX(' + (progress * 360) + 'deg) ' +
+          'rotateY(' + (progress * 360) + 'deg)';
+      });
+    })();
+  </script>
+</body>
+</html>

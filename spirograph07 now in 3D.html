@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>4D 3D Spirograph Parallax</title>
+  <style>
+    :root {
+      --bg: #f7f2ea;
+      --line: #8d7662;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      overflow-x: hidden;
+      font-family: sans-serif;
+    }
+    .controls {
+      position: fixed;
+      top: 10px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; gap: 10px;
+      z-index: 10; pointer-events: auto;
+    }
+    .controls input {
+      width: 200px;
+    }
+    .parallax {
+      height: 8000vh; /* extended scroll */
+      position: relative;
+    }
+    #renderContainer {
+      position: sticky;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100%; height: 100vh;
+      pointer-events: none;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+
+  <div class="controls">
+    <input id="sliderR" type="range" min="50" max="200" value="100">
+    <input id="sliderr" type="range" min="20" max="100" value="50">
+    <input id="sliderd" type="range" min="20" max="150" value="70">
+  </div>
+
+  <div class="parallax">
+    <div id="renderContainer"></div>
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, spiro;
+    const container = document.getElementById('renderContainer');
+    const sliderR = document.getElementById('sliderR');
+    const sliderr = document.getElementById('sliderr');
+    const sliderd = document.getElementById('sliderd');
+
+    init();
+    window.addEventListener('resize', onWindowResize);
+    [sliderR, sliderr, sliderd].forEach(s => s.addEventListener('input', regenerate));
+    window.addEventListener('scroll', onScroll);
+
+    function init() {
+      scene = new THREE.Scene();
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      camera = new THREE.PerspectiveCamera(45, width/height, 1, 10000);
+      camera.position.set(0, 0, 300);
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(width, height);
+      container.appendChild(renderer.domElement);
+
+      regenerate();
+      animate();
+    }
+
+    function generateSpiro(R, r, d) {
+      const points = [];
+      const loops = 80;
+      const steps = 5000;
+      for(let i=0; i<=steps; i++) {
+        const t = i/steps * Math.PI * loops;
+        const x = (R - r) * Math.cos(t) + d * Math.cos((R - r)/r * t);
+        const y = (R - r) * Math.sin(t) - d * Math.sin((R - r)/r * t);
+        const z = d * Math.sin((R - r)/r * t) * 0.4;
+        points.push(new THREE.Vector3(x, y, z));
+      }
+      return new THREE.BufferGeometry().setFromPoints(points);
+    }
+
+    function regenerate() {
+      if (spiro) scene.remove(spiro);
+      const R = +sliderR.value;
+      const r = +sliderr.value;
+      const d = +sliderd.value;
+      const geometry = generateSpiro(R, r, d);
+
+      // get CSS variable and convert to numeric hex
+      const lineColor = getComputedStyle(document.documentElement)
+                          .getPropertyValue('--line').trim();
+      const hex = parseInt(lineColor.replace('#',''), 16);
+
+      spiro = new THREE.Line(
+        geometry,
+        new THREE.LineBasicMaterial({ color: hex, linewidth: 2 })
+      );
+      scene.add(spiro);
+    }
+
+    function onScroll() {
+      const scrollY = window.scrollY;
+      const maxScroll = document.body.scrollHeight - window.innerHeight;
+      const progress = scrollY / maxScroll;
+      if (spiro) {
+        spiro.rotation.x = progress * Math.PI * 4;
+        spiro.rotation.y = progress * Math.PI * 2;
+      }
+      camera.position.z = 200 + Math.sin(progress * Math.PI) * 200; 
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    }
+  </script>
+
+</body>
+</html>
