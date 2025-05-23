@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spirograph V16 - Different Axis Rotation</title>
+  <style>
+    :root { --bg: #f7f2ea; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); overflow-x: hidden; font-family: sans-serif; }
+    #renderContainer { position: sticky; top: 0; width: 100%; height: 100vh; pointer-events: none; }
+    .scroll-area { height: 8000vh; }
+    .controls-mid {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px; background: rgba(255,255,255,0.8);
+      padding: 5px 10px; border-radius: 8px; z-index: 10; pointer-events: auto;
+    }
+    .controls-left, .controls-right {
+      position: fixed; bottom: 20px; display: flex; flex-direction: column; gap: 5px;
+      z-index: 10; pointer-events: auto;
+    }
+    .controls-left { left: 20px; }
+    .controls-right { right: 20px; }
+    label { font-size: 0.8rem; color: #555; }
+    input { width: 150px; }
+    canvas { display: block; }
+      #scrollTopBtn, #scrollBottomBtn {
+      position: fixed;
+      right: 20px;
+      padding: 10px 15px;
+      margin: 5px;
+      /* background: #007bff; */
+      /* color: white; */
+      /* border: none; */
+      /* border-radius: 4px; */
+      cursor: pointer;
+      font-size: 14px;
+    }
+    #scrollTopBtn { top: 20px; }
+    #scrollBottomBtn { top: 60px; }
+  </style>
+</head>
+<body>
+  <div class="controls-mid">
+    <div><label>R</label><input id="sliderR0" type="range" min="50" max="200" value="100"></div>
+    <div><label>r</label><input id="sliderr0" type="range" min="10" max="100" value="50"></div>
+    <div><label>d</label><input id="sliderd0" type="range" min="10" max="200" value="70"></div>
+  </div>
+  <div class="scroll-area"><div id="renderContainer"></div></div>
+  <div class="controls-left">
+    <label>Zoom</label><input id="sliderZoom" type="range" min="100" max="600" value="163">
+    <div>
+      <label>Rotate X</label><input id="sliderRotX" type="range" min="0" max="8" step="0.1" value="4">
+      <label>Rotate Y</label><input id="sliderRotY" type="range" min="0" max="8" step="0.1" value="2">
+      <label>Rotate Z</label><input id="sliderRotZ" type="range" min="0" max="8" step="0.1" value="1">
+    </div>
+  </div>
+  <div class="controls-right">
+    <label>Tube Radius</label><input id="sliderRadius" type="range" min="0.1" max="6" step="0.1" value="0.1">
+    <label>Depth Scale</label><input id="sliderZScale" type="range" min="0" max="2" step="0.1" value="1.6">
+    <div style="display:none">
+      <label>Auto Hue Speed</label><input id="sliderAutoHue" type="range" min="0" max="0.5" step="0.01" value="0">
+      <label>Hue</label><input id="sliderHue" type="range" min="0" max="1" step="0.01" value="0.08">
+    </div>
+  </div>
+    <button id="scrollTopBtn">Scroll to Top</button>
+  <button id="scrollBottomBtn">Scroll to Bottom</button>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    let scene, camera, renderer, mesh, basePoints = [];
+    let baseR = 3.14*6 + 0.05, baser = 3.14*2, based = 10;
+    const loops = 80, steps = 5000;
+    let tubeRadius = 0.05, hue = 0.08, zScale = 1.6;
+    let rotX = 4, rotY = 2, rotZ = 1, zoom = 163;
+    let autoHueSpeed = 0, autoHueOffset = 0;
+    const container = document.getElementById('renderContainer');
+    const clock = new THREE.Clock();
+
+    init();
+
+    function init() {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight,1,10000);
+      camera.position.z = zoom;
+      renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      container.appendChild(renderer.domElement);
+
+      regeneratePoints();
+
+      window.addEventListener('resize', onResize);
+      window.addEventListener('scroll', onScroll);
+
+      document.getElementById('sliderR0').oninput = e => { baseR = +e.target.value; regeneratePoints(); };
+      document.getElementById('sliderr0').oninput = e => { baser = +e.target.value; regeneratePoints(); };
+      document.getElementById('sliderd0').oninput = e => { based = +e.target.value; regeneratePoints(); };
+
+      document.getElementById('sliderZoom').oninput = e => { zoom = +e.target.value; camera.position.z = zoom; };
+      document.getElementById('sliderRotX').oninput = e => rotX = +e.target.value;
+      document.getElementById('sliderRotY').oninput = e => rotY = +e.target.value;
+      document.getElementById('sliderRotZ').oninput = e => rotZ = +e.target.value;
+
+      document.getElementById('sliderRadius').oninput = e => tubeRadius = +e.target.value;
+      document.getElementById('sliderHue').oninput = e => hue = +e.target.value;
+      document.getElementById('sliderZScale').oninput = e => mesh.scale.z = zScale = +e.target.value;
+      document.getElementById('sliderAutoHue').oninput = e => autoHueSpeed = +e.target.value;
+
+      animate();
+    }
+
+    function generatePoints(R, r, d, loops, steps) {
+      const pts = [];
+      const r2 = r*0.6, d2 = d*0.6, r3 = r*0.4, d3 = d*0.4;
+      for(let i=0; i<=steps; i++){
+        const t = i/steps * Math.PI * loops;
+        let x = (R - r) * Math.cos(t) + d * Math.cos((R - r)/r * t);
+        let y = (R - r) * Math.sin(t) - d * Math.sin((R - r)/r * t);
+        x += d2 * Math.cos((R - r)/r2 * t);
+        y -= d2 * Math.sin((R - r)/r2 * t);
+        x += d3 * Math.cos((R - r)/r3 * t);
+        y -= d3 * Math.sin((R - r)/r3 * t);
+        const z = d * Math.sin((R - r)/r * t);
+        pts.push(new THREE.Vector3(x, y, z));
+      }
+      return pts;
+    }
+
+    function regeneratePoints() {
+      basePoints = generatePoints(baseR, baser, based, loops, steps);
+      createMesh();
+    }
+
+    function createMesh() {
+      if(mesh) scene.remove(mesh);
+      const prog = window.scrollY / (document.body.scrollHeight - window.innerHeight);
+      const count = Math.floor(basePoints.length * prog);
+      const pts = basePoints.slice(0, Math.max(2, count));
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const geometry = new THREE.TubeGeometry(curve, pts.length*2, tubeRadius, 8, false);
+      const material = new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL((hue + autoHueOffset)%1, 0.5, 0.5) });
+      mesh = new THREE.Mesh(geometry, material);
+      mesh.scale.z = zScale;
+      scene.add(mesh);
+    }
+
+    function onScroll() {
+      // added by adam for fun?
+      zScale = 10 * (window.scrollY / (document.body.scrollHeight - window.innerHeight));
+      camera.position.z = 100 - (99.9 * (window.scrollY / (document.body.scrollHeight - window.innerHeight)));
+
+      createMesh();
+      const prog = window.scrollY / (document.body.scrollHeight - window.innerHeight);
+      mesh.rotation.x = prog * Math.PI * rotX;
+      // mesh.rotation.y = prog * Math.PI * rotY;
+      //mesh.rotation.z = prog * Math.PI * rotZ;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      if(autoHueSpeed > 0) autoHueOffset += dt * autoHueSpeed;
+      renderer.render(scene, camera);
+    }
+
+    function onResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  </script>
+
+ <script>
+    let scrollAnimationId = null;
+
+    function cancelAutoScroll() {
+      if (scrollAnimationId !== null) {
+        cancelAnimationFrame(scrollAnimationId);
+        scrollAnimationId = null;
+      }
+    }
+
+    function autoScrollTo(targetY, duration = 6000) {
+      cancelAutoScroll();
+
+      const startY = window.scrollY;
+      const distance = targetY - startY;
+      const startTime = performance.now();
+
+      // cancel if user moves mouse or scrolls
+      function onUserInteract() {
+        cancelAutoScroll();
+        cleanup();
+      }
+      function cleanup() {
+        document.removeEventListener('mousemove', onUserInteract);
+        document.removeEventListener('wheel', onUserInteract);
+      }
+      document.addEventListener('mousemove', onUserInteract);
+      document.addEventListener('wheel', onUserInteract);
+
+      function step(now) {
+        const elapsed = now - startTime;
+        const t = Math.min(elapsed / duration, 1);
+        // ease-in-out quad
+        const eased = t < 0.5
+          ? 2 * t * t
+          : -1 + (4 - 2 * t) * t;
+        window.scrollTo(0, startY + distance * eased);
+
+        if (t < 1) {
+          scrollAnimationId = requestAnimationFrame(step);
+        } else {
+          scrollAnimationId = null;
+          cleanup();
+        }
+      }
+
+      scrollAnimationId = requestAnimationFrame(step);
+    }
+
+    document.getElementById('scrollTopBtn')
+      .addEventListener('click', () => autoScrollTo(0));
+
+    document.getElementById('scrollBottomBtn')
+      .addEventListener('click', () => {
+        const bottom = document.documentElement.scrollHeight - window.innerHeight;
+        autoScrollTo(bottom);
+      });
+  </script>
+</body>
+</html>
